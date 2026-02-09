@@ -1,6 +1,19 @@
 import Complaint from '../models/Complaint.js';
 import { body, validationResult } from 'express-validator';
 
+const STATUS_MAP = {
+  pending: 'Pending',
+  'in-progress': 'In Progress',
+  resolved: 'Resolved',
+  rejected: 'Rejected',
+  Pending: 'Pending',
+  'In Progress': 'In Progress',
+  Resolved: 'Resolved',
+  Rejected: 'Rejected',
+};
+
+const normalizeStatus = (status) => STATUS_MAP[status];
+
 /**
  * Validation rules for creating a complaint
  */
@@ -65,7 +78,7 @@ export const createComplaint = async (req, res, next) => {
       priority: priority || 'medium',
       attachments,
       timeline: [{
-        status: 'pending',
+        status: 'Pending',
         note: 'Complaint submitted',
         updatedBy: req.user._id,
       }],
@@ -93,12 +106,24 @@ export const createComplaint = async (req, res, next) => {
  */
 export const getMyComplaints = async (req, res, next) => {
   try {
-    const { status, category, page = 1, limit = 10 } = req.query;
+    const { status, category, search, sort = 'newest', page = 1, limit = 10 } = req.query;
 
     // Build filter
     const filter = { userId: req.user._id };
-    if (status) filter.status = status;
+    if (status) {
+      const normalizedStatus = normalizeStatus(status);
+      if (normalizedStatus) filter.status = normalizedStatus;
+    }
     if (category) filter.category = category;
+
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const sortQuery = sort === 'oldest' ? { createdAt: 1 } : { createdAt: -1 };
 
     // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -106,7 +131,7 @@ export const getMyComplaints = async (req, res, next) => {
     // Get complaints with pagination
     const complaints = await Complaint.find(filter)
       .populate('assignedTo', 'name email department')
-      .sort({ createdAt: -1 })
+      .sort(sortQuery)
       .skip(skip)
       .limit(parseInt(limit));
 
@@ -137,7 +162,7 @@ export const getMyComplaints = async (req, res, next) => {
  */
 export const getAllComplaints = async (req, res, next) => {
   try {
-    const { status, category, priority, assignedTo, search, page = 1, limit = 10 } = req.query;
+    const { status, category, priority, assignedTo, search, sort = 'newest', page = 1, limit = 10 } = req.query;
 
     // Build filter
     const filter = {};
@@ -147,7 +172,10 @@ export const getAllComplaints = async (req, res, next) => {
       filter.assignedTo = req.user._id;
     }
 
-    if (status) filter.status = status;
+    if (status) {
+      const normalizedStatus = normalizeStatus(status);
+      if (normalizedStatus) filter.status = normalizedStatus;
+    }
     if (category) filter.category = category;
     if (priority) filter.priority = priority;
     if (assignedTo) filter.assignedTo = assignedTo;
@@ -160,6 +188,8 @@ export const getAllComplaints = async (req, res, next) => {
       ];
     }
 
+    const sortQuery = sort === 'oldest' ? { createdAt: 1 } : { createdAt: -1 };
+
     // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -167,7 +197,7 @@ export const getAllComplaints = async (req, res, next) => {
     const complaints = await Complaint.find(filter)
       .populate('userId', 'name email')
       .populate('assignedTo', 'name email department')
-      .sort({ createdAt: -1 })
+      .sort(sortQuery)
       .skip(skip)
       .limit(parseInt(limit));
 
@@ -253,11 +283,12 @@ export const getComplaintById = async (req, res, next) => {
 export const updateComplaintStatus = async (req, res, next) => {
   try {
     const { status, note } = req.body;
+    const normalizedStatus = normalizeStatus(status);
 
-    if (!status) {
+    if (!normalizedStatus) {
       return res.status(400).json({
         success: false,
-        message: 'Status is required',
+        message: 'Status must be one of: Pending, In Progress, Resolved, Rejected',
       });
     }
 
@@ -284,9 +315,9 @@ export const updateComplaintStatus = async (req, res, next) => {
     // Set temporary properties for pre-save hook
     complaint._statusUpdatedBy = req.user._id;
     complaint._statusUpdateNote = note || '';
-    complaint.status = status;
+    complaint.status = normalizedStatus;
 
-    if (status === 'resolved' && note) {
+    if (normalizedStatus === 'Resolved' && note) {
       complaint.resolutionNote = note;
     }
 

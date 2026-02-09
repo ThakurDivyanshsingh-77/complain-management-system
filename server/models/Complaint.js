@@ -8,7 +8,7 @@ const timelineSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    enum: ['pending', 'in-progress', 'resolved', 'rejected'],
+    enum: ['Pending', 'In Progress', 'Resolved', 'Rejected'],
   },
   note: {
     type: String,
@@ -79,10 +79,10 @@ const complaintSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['pending', 'in-progress', 'resolved', 'rejected'],
+        values: ['Pending', 'In Progress', 'Resolved', 'Rejected'],
         message: 'Invalid status',
       },
-      default: 'pending',
+      default: 'Pending',
       index: true,
     },
     priority: {
@@ -144,7 +144,7 @@ complaintSchema.pre('save', function (next) {
     }
     
     // Set resolvedAt timestamp
-    if (this.status === 'resolved' && !this.resolvedAt) {
+    if (this.status === 'Resolved' && !this.resolvedAt) {
       this.resolvedAt = new Date();
     }
   }
